@@ -1,0 +1,1 @@
+export const Queue=(()=>{let e=[];return{add(l){e.push(...l)},next:()=>e.shift()||null,peek:()=>e[0]||null,all:()=>e,remove(l){e.splice(l,1)},set(l){e=l},shuffle(){for(let l=e.length-1;l>0;l--){let t=Math.floor(Math.random()*(l+1));[e[l],e[t]]=[e[t],e[l]]}}}})();

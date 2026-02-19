@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta content="https://autoplay.radiotools.be/seo_rtbe.png" property="og:image">
+    <meta content="1280" property="og:image:width">
+    <meta content="720" property="og:image:height">
+    <meta content="summary_large_image" name="twitter:card">
+    <meta content="https://autoplay.radiotools.be/seo_rtbe.png" name="twitter:image">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <title>RadioBox – AutoPlay by MrMazure</title>
+    <link href="favicon.png" rel="icon" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+</head>
+
+<body>
+    <header id="top-header">
+        <div class="logo-container">
+            <img alt="Logo" class="logo" src="rt_logo_head.png">
+            <h1 class="title">RadioBox <span class="subtitle">| AutoPlay By MrMazure</span></h1>
+        </div>
+        <div class="header-controls">
+            <!-- Placeholder for future header controls if needed -->
+        </div>
+    </header>
+
+    <div id="app">
+        <aside id="left-panel">
+            <div id="left-header">
+                <h2 class="section-title">Playlist</h2>
+                <div class="playlist-actions">
+                    <button id="add-btn" title="Ajouter des fichiers" class="icon-btn">
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2"
+                            fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                    <button id="shuffle-btn" title="Mélanger les fichiers" class="icon-btn">
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2"
+                            fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="16 3 21 3 21 8"></polyline>
+                            <line x1="4" y1="20" x2="21" y2="3"></line>
+                            <polyline points="21 16 21 21 16 21"></polyline>
+                            <line x1="15" y1="15" x2="21" y2="21"></line>
+                            <line x1="4" y1="4" x2="9" y2="9"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div id="drop-hint">
+                <div class="drop-icon">📂</div>
+                <span>Déposez vos fichiers audio ici</span>
+            </div>
+
+            <ul id="queue"></ul>
+        </aside>
+
+        <section id="right-panel">
+            <div id="header-bar">
+                <div class="system-info">
+                    <span class="label">HEURE</span>
+                    <div id="clock">--:--:--</div>
+                </div>
+
+                <div class="main-controls">
+                    <button id="stop-end-btn" title="Activer/désactiver Auto next" class="control-btn toggle-btn">
+                        <span class="icon">🔄</span> Auto next
+                    </button>
+                    <button id="stop-btn" title="Stop" class="control-btn stop-btn">
+                        <span class="icon">⏹</span> STOP
+                    </button>
+                    <button id="play-btn" title="Play" class="control-btn play-btn">
+                        <span class="icon">▶</span> PLAY
+                    </button>
+                    <button id="pause-btn" title="Pause" class="control-btn pause-btn">
+                        <span class="icon">⏸</span> PAUSE
+                    </button>
+                    <button id="next-btn" title="Passer au titre suivant" class="control-btn next-btn">
+                        <span class="icon">⏭</span> NEXT
+                    </button>
+                </div>
+
+                <div class="volume-control">
+                    <span class="vol-icon" title="Volume">🔊</span>
+                    <input id="volume" max="1" min="0" step="0.01" type="range" value="1">
+                </div>
+            </div>
+
+            <div class="player-container">
+                <div id="now-playing">
+                    <canvas id="visualizer"></canvas>
+                    <div class="track-info">
+                        <div id="now-label">EN COURS</div>
+                        <div id="now-title">–</div>
+                    </div>
+                    <div class="time-display">
+                        <div id="time-meta" data-total="0">00:00 / 00:00</div>
+                    </div>
+                </div>
+
+                <div id="progress">
+                    <canvas id="waveform"></canvas>
+                    <!-- <div id="progress-bar"></div> -->
+                </div>
+            </div>
+
+            <div id="up-next">
+                <span class="next-label">SUIVANT:</span> <span id="next-track-name">–</span>
+            </div>
+
+            <audio id="player1"></audio>
+            <audio id="player2"></audio>
+
+            <div id="history">
+                <h3 class="section-title">Historique</h3>
+                <ul id="history-list"></ul>
+            </div>
+        </section>
+    </div>
+
+    <script src="js/main.js" type="module"></script>
+</body>
+
+</html>
