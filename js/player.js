@@ -10,6 +10,7 @@ let masterVol = 1;
 let ctx = null;
 let masterGain = null;
 let masterAnalyser = null;
+let pendingOutputDeviceId = null;
 const sourceNodes = new Map(); // Store MediaElementSources to avoid re-creation errors
 
 function getCtx() {
@@ -26,6 +27,11 @@ function getCtx() {
 
         // Start visualizer
         requestAnimationFrame(drawVisualizer);
+
+        // Apply pending output device if set
+        if (pendingOutputDeviceId && typeof ctx.setSinkId === 'function') {
+            ctx.setSinkId(pendingOutputDeviceId).catch(() => {});
+        }
     }
     return ctx;
 }
@@ -217,4 +223,17 @@ players.forEach(p => {
 export const Player = {
     getCurrent: () => players[active],
     playNext: playNext
+};
+
+export const applyAudioOutput = async (deviceId) => {
+    const promises = [];
+    if (ctx && typeof ctx.setSinkId === 'function') {
+        promises.push(ctx.setSinkId(deviceId).catch(() => {}));
+    } else {
+        pendingOutputDeviceId = deviceId;
+    }
+    if ('setSinkId' in HTMLAudioElement.prototype) {
+        players.forEach(p => promises.push(p.setSinkId(deviceId).catch(() => {})));
+    }
+    if (promises.length > 0) await Promise.all(promises);
 };
