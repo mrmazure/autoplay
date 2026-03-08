@@ -16,6 +16,9 @@ const $ = e => document.getElementById(e),
     fmt = e => `${String(Math.floor(e / 60)).padStart(2, "0")}:${String(Math.floor(e % 60)).padStart(2, "0")}`;
 
 let currentWaveform = null;
+let nextCuePct = null;   // 0-1 ratio of track, null = inactive
+let isDraggingCue = false;
+const CUE_HIT_PX = 12;  // pixels tolerance to grab the marker
 
 export const UI = {
     renderQueue() {
@@ -51,19 +54,22 @@ export const UI = {
 
         // Generate Waveform
         currentWaveform = null;
+        nextCuePct = 0.93; // Fallback: ~93% while waveform loads
         // Draw placeholder
         drawWaveform(0);
 
         if (e && (e instanceof File || e instanceof Blob)) {
             try {
                 currentWaveform = await Waveform.generate(e, 800);
+                // Detect fade-out start to set a smart NEXT cue point
+                nextCuePct = detectFadeOutCue(currentWaveform);
             } catch (err) {
                 console.warn("Waveform gen failed", err);
             }
         }
     },
     clearCurrent() {
-        nowT.textContent = "–", /* bar.style.width = "0%", */ meta.textContent = "", currentWaveform = null, drawWaveform(0)
+        nowT.textContent = "–", /* bar.style.width = "0%", */ meta.textContent = "", currentWaveform = null, nextCuePct = null, drawWaveform(0)
     },
     tick() {
         const e = t.getCurrent();
@@ -71,9 +77,20 @@ export const UI = {
             // bar.style.width = "0%";
             if (!window.autoNext) UI.clearCurrent();
         } else if (e.duration) {
-            const t = e.duration - e.currentTime;
+            // NEXT cue trigger: when playback reaches the marker, start next track
+            if (nextCuePct !== null) {
+                const pct = e.currentTime / e.duration;
+                if (pct >= nextCuePct) {
+                    const prevPlayer = e;
+                    nextCuePct = null;
+                    t.playNext(false);
+                    a(prevPlayer);
+                }
+            }
+
+            const remaining = e.duration - e.currentTime;
             // bar.style.width = e.currentTime / e.duration * 100 + "%";
-            meta.textContent = `Durée : ${fmt(meta.dataset.total || e.duration)} | Restant : ${fmt(t)}`;
+            meta.textContent = `Durée : ${fmt(meta.dataset.total || e.duration)} | Restant : ${fmt(remaining)}`;
 
             drawWaveform(e.currentTime / e.duration);
         }
@@ -85,11 +102,71 @@ export const UI = {
     }
 };
 
+/**
+ * Detects where the fade-out begins at the end of a track,
+ * following standard radio automation segue logic:
+ *  - Only looks in the last 35% of the track
+ *  - Scans backwards from the end to find the first sample
+ *    where the level rises above a "loud" threshold (= start of fade-out)
+ *  - Requires the drop to be sustained for at least SUSTAIN samples
+ *  - Fallback: total_duration - 4 seconds (≈ 93% for a 3:30 track)
+ *
+ * @param {Float32Array} waveform  Normalised 0-1 amplitude samples
+ * @returns {number}               Cue position as a 0-1 ratio
+ */
+function detectFadeOutCue(waveform) {
+    const n = waveform.length;
+
+    // Compute the average level of the "body" (first 60% of the track)
+    // to get a reference loudness, ignoring intro/outro silence.
+    const bodyEnd = Math.floor(n * 0.60);
+    let bodySum = 0;
+    for (let i = Math.floor(n * 0.10); i < bodyEnd; i++) bodySum += waveform[i];
+    const bodyAvg = bodySum / (bodyEnd - Math.floor(n * 0.10));
+
+    // Fade starts when the level drops below this fraction of the body average.
+    const FADE_THRESHOLD = bodyAvg * 0.40; // 40 % of normal loudness
+    // How many consecutive quiet samples confirm the fade (≈ 0.5 s at 800 samples/track)
+    const SUSTAIN = Math.max(8, Math.floor(n * 0.010));
+    // Only search in the last 35% of the track
+    const searchStart = Math.floor(n * 0.65);
+
+    // Scan backwards: find the latest sample above threshold
+    // (= the last "loud" moment before the fade-out)
+    let lastLoud = searchStart;
+    for (let i = n - 1; i >= searchStart; i--) {
+        if (waveform[i] >= FADE_THRESHOLD) { lastLoud = i; break; }
+    }
+
+    // Now scan forward from lastLoud to find where SUSTAIN consecutive
+    // samples stay below threshold (= confirmed start of fade-out)
+    for (let i = lastLoud; i <= n - SUSTAIN; i++) {
+        let quiet = true;
+        for (let j = 0; j < SUSTAIN; j++) {
+            if (waveform[i + j] >= FADE_THRESHOLD) { quiet = false; break; }
+        }
+        if (quiet) return i / n; // Found the segue point
+    }
+
+    // Fallback: place cue 4 s before the end (estimated from 93%)
+    return 0.93;
+}
+
 function drawWaveform(progressPct) {
     if (!waveformCanvas) return;
     const ctx = waveformCanvas.getContext("2d");
-    const w = waveformCanvas.width = waveformCanvas.offsetWidth;
-    const h = waveformCanvas.height = waveformCanvas.offsetHeight;
+
+    // Only resize the canvas backing store if the element has a real size.
+    // Setting canvas.width/height to 0 clears it permanently and causes
+    // the waveform to disappear on small screens or during layout transitions.
+    const lw = waveformCanvas.offsetWidth;
+    const lh = waveformCanvas.offsetHeight;
+    if (lw > 0) waveformCanvas.width = lw;
+    if (lh > 0) waveformCanvas.height = lh;
+
+    const w = waveformCanvas.width;
+    const h = waveformCanvas.height;
+    if (!w || !h) return; // layout not ready yet, skip frame
 
     ctx.clearRect(0, 0, w, h);
 
@@ -97,6 +174,8 @@ function drawWaveform(progressPct) {
         // Draw loading or empty line
         ctx.fillStyle = "#333";
         ctx.fillRect(0, h / 2 - 1, w, 2);
+        // Still draw the cue marker even without waveform data
+        drawCueMarker(ctx, w, h);
         return;
     }
 
@@ -125,6 +204,53 @@ function drawWaveform(progressPct) {
         ctx.fillRect(i * barW, center - barH / 2, barW, barH);
     }
     ctx.restore();
+
+    // ── NEXT cue point marker ─────────────────────────────────
+    drawCueMarker(ctx, w, h);
+}
+
+function drawCueMarker(ctx, w, h) {
+    if (nextCuePct === null) return;
+    const mx = Math.round(nextCuePct * w);
+    const col = isDraggingCue ? '#ff8080' : '#ef4444';
+
+    ctx.save();
+
+    // Subtle red tint on the zone AFTER the marker
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+    ctx.fillRect(mx, 0, w - mx, h);
+
+    // Red vertical line
+    ctx.strokeStyle = col;
+    ctx.lineWidth = isDraggingCue ? 3 : 2;
+    ctx.beginPath();
+    ctx.moveTo(mx, 0);
+    ctx.lineTo(mx, h);
+    ctx.stroke();
+
+    // Small downward triangle handle at the top (drag grip visual)
+    const tri = 6;
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(mx - tri, 0);
+    ctx.lineTo(mx + tri, 0);
+    ctx.lineTo(mx, tri * 1.4);
+    ctx.closePath();
+    ctx.fill();
+
+    // "NEXT" label at the bottom with a dark backing for readability
+    ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+    const tw = ctx.measureText('NEXT').width;
+    // Keep label inside canvas bounds
+    const lx = Math.min(Math.max(mx, tw / 2 + 4), w - tw / 2 - 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(lx - tw / 2 - 3, h - 14, tw + 6, 13);
+    ctx.fillStyle = col;
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'center';
+    ctx.fillText('NEXT', lx, h - 1);
+
+    ctx.restore();
 }
 
 progress.addEventListener("click", (e => {
@@ -135,13 +261,75 @@ progress.addEventListener("click", (e => {
         width: a
     } = progress.getBoundingClientRect();
     n.currentTime = (e.clientX - r) / a * n.duration
-})), queue.addEventListener("dragover", (e => {
+}));
+
+// ── NEXT cue marker — pointer drag logic ──────────────────────────────────
+
+// Update cursor and block seek-clicks that land on the marker
+waveformCanvas.addEventListener('mousemove', evt => {
+    if (nextCuePct === null) { waveformCanvas.style.cursor = ''; return; }
+    const r = waveformCanvas.getBoundingClientRect();
+    const dist = Math.abs((evt.clientX - r.left) - nextCuePct * r.width);
+    waveformCanvas.style.cursor = dist <= CUE_HIT_PX ? 'ew-resize' : '';
+});
+
+// Block the seek-click when the user clicks directly on the marker
+waveformCanvas.addEventListener('click', evt => {
+    if (nextCuePct === null) return;
+    const r = waveformCanvas.getBoundingClientRect();
+    const dist = Math.abs((evt.clientX - r.left) - nextCuePct * r.width);
+    if (dist <= CUE_HIT_PX) evt.stopPropagation();
+});
+
+// Start dragging when pointer goes down near the marker
+waveformCanvas.addEventListener('pointerdown', evt => {
+    if (nextCuePct === null) return;
+    const r = waveformCanvas.getBoundingClientRect();
+    const dist = Math.abs((evt.clientX - r.left) - nextCuePct * r.width);
+    if (dist > CUE_HIT_PX) return;
+    isDraggingCue = true;
+    waveformCanvas.setPointerCapture(evt.pointerId);
+    waveformCanvas.style.cursor = 'ew-resize';
+    evt.stopPropagation();
+    evt.preventDefault();
+});
+
+// Move the marker while dragging
+waveformCanvas.addEventListener('pointermove', evt => {
+    if (!isDraggingCue) return;
+    const r = waveformCanvas.getBoundingClientRect();
+    nextCuePct = Math.max(0, Math.min(1, (evt.clientX - r.left) / r.width));
+    evt.preventDefault();
+});
+
+// Release drag
+waveformCanvas.addEventListener('pointerup', () => {
+    if (!isDraggingCue) return;
+    isDraggingCue = false;
+    waveformCanvas.style.cursor = '';
+});
+
+waveformCanvas.addEventListener('pointercancel', () => { isDraggingCue = false; });
+
+// Right-click near the marker → remove it
+waveformCanvas.addEventListener('contextmenu', evt => {
+    if (nextCuePct === null) return;
+    const r = waveformCanvas.getBoundingClientRect();
+    const dist = Math.abs((evt.clientX - r.left) - nextCuePct * r.width);
+    if (dist <= CUE_HIT_PX * 2) {
+        evt.preventDefault();
+        nextCuePct = null;
+    }
+});
+
+queue.addEventListener("dragover", (e => {
     e.preventDefault();
     const t = queue.querySelector(".dragging");
     if (!t) return;
     const n = [...queue.querySelectorAll(".queue-item:not(.dragging)")].find((t => e.clientY < t.getBoundingClientRect().top + t.offsetHeight / 2));
     n ? queue.insertBefore(t, n) : queue.append(t)
-})), queue.addEventListener("drop", (t => {
+}));
+queue.addEventListener("drop", (t => {
     t.preventDefault();
     const n = [...queue.querySelectorAll(".queue-item")].map((e => e.querySelector(".file-name").textContent));
     e.set(n.map((t => e.all().find((e => e.name === t))))), UI.renderQueue()
