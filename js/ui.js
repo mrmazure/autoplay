@@ -17,6 +17,8 @@ const $ = e => document.getElementById(e),
 
 let currentWaveform = null;
 let nextCuePct = null;   // 0-1 ratio of track, null = inactive
+window.nextCuePct = null; // mirrored for cross-module access (player.js)
+function setNextCuePct(v) { nextCuePct = v; window.nextCuePct = v; }
 let isDraggingCue = false;
 const CUE_HIT_PX = 12;  // pixels tolerance to grab the marker
 
@@ -54,7 +56,7 @@ export const UI = {
 
         // Generate Waveform
         currentWaveform = null;
-        nextCuePct = 0.93; // Fallback: ~93% while waveform loads
+        setNextCuePct(0.93); // Fallback: ~93% while waveform loads
         // Draw placeholder
         drawWaveform(0);
 
@@ -62,14 +64,14 @@ export const UI = {
             try {
                 currentWaveform = await Waveform.generate(e, 800);
                 // Detect fade-out start to set a smart NEXT cue point
-                nextCuePct = detectFadeOutCue(currentWaveform);
+                setNextCuePct(detectFadeOutCue(currentWaveform));
             } catch (err) {
                 console.warn("Waveform gen failed", err);
             }
         }
     },
     clearCurrent() {
-        nowT.textContent = "–", /* bar.style.width = "0%", */ meta.textContent = "", currentWaveform = null, nextCuePct = null, drawWaveform(0)
+        nowT.textContent = "–", /* bar.style.width = "0%", */ meta.textContent = "", currentWaveform = null, setNextCuePct(null), drawWaveform(0)
     },
     tick() {
         const e = t.getCurrent();
@@ -82,7 +84,7 @@ export const UI = {
                 const pct = e.currentTime / e.duration;
                 if (pct >= nextCuePct) {
                     const prevPlayer = e;
-                    nextCuePct = null;
+                    setNextCuePct(null);
                     t.playNext(false);
                     a(prevPlayer);
                 }
@@ -305,7 +307,7 @@ waveformCanvas.addEventListener('pointerdown', evt => {
 waveformCanvas.addEventListener('pointermove', evt => {
     if (!isDraggingCue) return;
     const r = waveformCanvas.getBoundingClientRect();
-    nextCuePct = Math.max(0, Math.min(1, (evt.clientX - r.left) / r.width));
+    setNextCuePct(Math.max(0, Math.min(1, (evt.clientX - r.left) / r.width)));
     evt.preventDefault();
 });
 
@@ -325,7 +327,7 @@ waveformCanvas.addEventListener('contextmenu', evt => {
     const dist = Math.abs((evt.clientX - r.left) - nextCuePct * r.width);
     if (dist <= CUE_HIT_PX * 2) {
         evt.preventDefault();
-        nextCuePct = null;
+        setNextCuePct(null);
     }
 });
 

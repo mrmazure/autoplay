@@ -98,11 +98,20 @@ function observeSilence(player) {
 
         const remaining = player.duration - player.currentTime;
 
-        // End of file check (0.3s trigger)
+        // End of file check (0.3s trigger) – safety net, always runs
         if (remaining < 0.3 && window.autoNext) {
             triggered = true;
             if (players[active] === player) playNext(false);
             fadeOut(player);
+            return;
+        }
+
+        // Respect the visual cue point: don't fire silence detection before it.
+        // tick() in ui.js owns the transition at nextCuePct; silence detection
+        // is only a fallback for when no cue is active or it has been passed.
+        const cuePct = window.nextCuePct;
+        if (typeof cuePct === 'number' && player.currentTime / player.duration < cuePct) {
+            requestAnimationFrame(check);
             return;
         }
 
