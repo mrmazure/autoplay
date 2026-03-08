@@ -78,7 +78,7 @@ export const UI = {
             if (!window.autoNext) UI.clearCurrent();
         } else if (e.duration) {
             // NEXT cue trigger: when playback reaches the marker, start next track
-            if (nextCuePct !== null) {
+            if (nextCuePct !== null && window.autoNext) {
                 const pct = e.currentTime / e.duration;
                 if (pct >= nextCuePct) {
                     const prevPlayer = e;
@@ -133,19 +133,26 @@ function detectFadeOutCue(waveform) {
 
     // Scan backwards: find the latest sample above threshold
     // (= the last "loud" moment before the fade-out)
-    let lastLoud = searchStart;
+    // Use -1 as sentinel so we can detect "nothing found in search window".
+    let lastLoud = -1;
     for (let i = n - 1; i >= searchStart; i--) {
         if (waveform[i] >= FADE_THRESHOLD) { lastLoud = i; break; }
     }
 
+    // If the entire last 35% is already quiet (no loud sample found),
+    // the fade started before our search window – use the safe fallback
+    // rather than scanning forward from 65% and returning way too early.
+    if (lastLoud === -1) return 0.93;
+
     // Now scan forward from lastLoud to find where SUSTAIN consecutive
-    // samples stay below threshold (= confirmed start of fade-out)
+    // samples stay below threshold (= confirmed start of fade-out).
+    // Floor at 0.80 so the cue never lands before 80% of the track.
     for (let i = lastLoud; i <= n - SUSTAIN; i++) {
         let quiet = true;
         for (let j = 0; j < SUSTAIN; j++) {
             if (waveform[i + j] >= FADE_THRESHOLD) { quiet = false; break; }
         }
-        if (quiet) return i / n; // Found the segue point
+        if (quiet) return Math.max(0.80, i / n); // Never trigger before 80%
     }
 
     // Fallback: place cue 4 s before the end (estimated from 93%)
@@ -161,8 +168,8 @@ function drawWaveform(progressPct) {
     // the waveform to disappear on small screens or during layout transitions.
     const lw = waveformCanvas.offsetWidth;
     const lh = waveformCanvas.offsetHeight;
-    if (lw > 0) waveformCanvas.width = lw;
-    if (lh > 0) waveformCanvas.height = lh;
+    if (lw > 0 && waveformCanvas.width !== lw) waveformCanvas.width = lw;
+    if (lh > 0 && waveformCanvas.height !== lh) waveformCanvas.height = lh;
 
     const w = waveformCanvas.width;
     const h = waveformCanvas.height;
