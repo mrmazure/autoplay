@@ -79,10 +79,12 @@ export const UI = {
             // bar.style.width = "0%";
             if (!window.autoNext) UI.clearCurrent();
         } else if (e.duration) {
-            // NEXT cue trigger: when playback reaches the marker, start next track
-            if (nextCuePct !== null && window.autoNext) {
+            // NEXT cue trigger: fallback for foreground (primary is timeupdate in player.js).
+            // Read window.nextCuePct so that when timeupdate already fired and set it to
+            // null, this block is skipped and does not double-trigger playNext.
+            if (window.nextCuePct !== null && window.autoNext) {
                 const pct = e.currentTime / e.duration;
-                if (pct >= nextCuePct) {
+                if (pct >= window.nextCuePct) {
                     const prevPlayer = e;
                     setNextCuePct(null);
                     t.playNext(false);
@@ -100,7 +102,10 @@ export const UI = {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit"
-        }), requestAnimationFrame(UI.tick)
+        });
+        // Use setTimeout when hidden so the cue-point trigger keeps firing
+        // even when the tab is in background or the window is minimised.
+        document.hidden ? setTimeout(UI.tick, 250) : requestAnimationFrame(UI.tick);
     }
 };
 

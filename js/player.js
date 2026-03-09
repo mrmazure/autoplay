@@ -88,11 +88,16 @@ function observeSilence(player) {
     let silenceFrames = 0;
     let triggered = false;
 
+    // Schedule next check: use setTimeout when the tab is hidden so silence
+    // detection keeps running even in background / minimised window.
+    const scheduleCheck = () =>
+        document.hidden ? setTimeout(check, 50) : requestAnimationFrame(check);
+
     const check = () => {
         if (triggered || player.paused) return;
 
         if (player.duration && player.currentTime < 0.7 * player.duration) {
-            requestAnimationFrame(check);
+            scheduleCheck();
             return;
         }
 
@@ -111,7 +116,7 @@ function observeSilence(player) {
         // is only a fallback for when no cue is active or it has been passed.
         const cuePct = window.nextCuePct;
         if (typeof cuePct === 'number' && player.currentTime / player.duration < cuePct) {
-            requestAnimationFrame(check);
+            scheduleCheck();
             return;
         }
 
@@ -137,9 +142,9 @@ function observeSilence(player) {
             return;
         }
 
-        requestAnimationFrame(check);
+        scheduleCheck();
     };
-    requestAnimationFrame(check);
+    scheduleCheck();
 }
 
 function playNext(manual = false) {
@@ -225,6 +230,22 @@ players.forEach(p => {
             } else {
                 document.dispatchEvent(new CustomEvent("trackclear"));
             }
+        }
+    });
+
+    // Primary NEXT cue trigger.
+    // timeupdate is fired by the browser's media engine — it is never
+    // throttled during audio playback, regardless of tab visibility,
+    // minimised window, or background state. This replaces any
+    // requestAnimationFrame / setTimeout polling for the cue point.
+    p.addEventListener('timeupdate', () => {
+        if (p !== players[active] || !p.duration) return;
+        const pct = p.currentTime / p.duration;
+        if (typeof window.nextCuePct === 'number' && window.autoNext && pct >= window.nextCuePct) {
+            window.nextCuePct = null; // prevent tick() in ui.js from double-firing
+            const prev = p;
+            playNext(false);
+            fadeOut(prev);
         }
     });
 });
